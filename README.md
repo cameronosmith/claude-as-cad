@@ -37,7 +37,7 @@ from the view, and ⌘C / ⌘V to duplicate parts or boxes. Edits follow the rob
 
 ![Sizing and placing a box in the editor](docs/media/block_it_out.gif)
 
-<sub>Recorded in the actual editor.</sub>
+<sub>Recorded in the actual editor (scripted replay of a real edit).</sub>
 
 ### 3. Watch Claude build it
 
