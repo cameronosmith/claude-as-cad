@@ -1,0 +1,6 @@
+node_modules/
+dist/
+*.log
+_shots/
+.env
+.env.*
