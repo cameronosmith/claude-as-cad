@@ -72,6 +72,25 @@ your camera where it was.
 
 <sub>2× speed. Staged replay of a real build session, run in the actual editor.</sub>
 
+## Why: agents across the whole robotics stack
+
+CAD is only the first step. Once the design lives in a Claude-native interface, the CAD agent
+can hand its work straight to the next agent instead of to a person with a pile of files:
+
+**CAD → calibration & data recording → training → deployment**
+
+For a handheld UMI gripper, the CAD agent added ArUco markers, sent the sheet to print, and
+handed the model to a calibration and data-recording agent. That agent recorded 50 demos of
+picking up a cube and placing it in a bowl. A training agent then trained a policy on the new
+dataset, and a deploy agent ran it on the real arm.
+
+claude-as-cad covers the first stage. The rest is the same pattern: one agent per stage, each
+handing off to the next.
+
+![CAD, data recording, training, and deployment agents handing off to each other](docs/media/full_stack.gif)
+
+<sub>From the Claude-as-CAD video (1.5× speed). Real recordings, sped up in places; agent chat panes partly recomposed for the edit.</sub>
+
 ## Quick start
 
 Requires Node.js 20+.
