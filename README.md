@@ -3,8 +3,8 @@
 A browser viewer and editor for robot CAD, built to work alongside Claude Code.
 
 You point at things in 3D; Claude writes the CAD. Click a surface and Claude gets its exact
-coordinates. Block out a change by moving parts or dropping in boxes right in the browser. Then
-watch the model reload as Claude rewrites the files. The browser never edits your CAD — every
+coordinates. Block out a change by moving parts or dropping in boxes right in the browser, and
+keep your design notes next to the CAD so Claude remembers what you've learned. The browser never edits your CAD — every
 edit is a reference that your agent turns into real geometry.
 
 claude-as-cad is a fork of the CAD Viewer from
@@ -15,39 +15,62 @@ editor, an edit log, and click-to-reference added for agent-driven robot design.
 
 ### 1. Click to reference
 
-Click any surface. The viewer copies a tag like
+Click any object and its 3D point, mesh face, and object ID are copied to your clipboard:
 
 ```
 [holder.stl in link_5 @ (76.0, 107.2, 48.3)mm | local (12.3, -4.5, 8.1)mm n(0.00, 0.00, -1.00) tri 1423, -X side face]
 ```
 
-with the point in the robot's base frame, the same point in the STL's own frame, the face normal,
+That's the point in the robot's base frame, the same point in the STL's own frame, the face normal,
 and the triangle index. Paste it into Claude Code instead of describing "the face on the left
 side of the holder."
 
-![Clicking two faces and asking Claude to join them](docs/media/click_to_reference.gif)
+![Click to reference](docs/media/click_to_reference.gif)
 
-<sub>Re-enactment of a real session (viewer re-rendered for the clip).</sub>
+<sub>From the Claude-as-CAD video. The session shown is a re-enactment of a real one.</sub>
 
-### 2. Block it out in the browser
+### 2. A 3D primitive editor
 
-Select a part and drag its location, rotation, and scale fields left or right, Blender-style.
-Add named boxes with per-axis size as placeholders for parts that don't exist yet, delete parts
-from the view, and ⌘C / ⌘V to duplicate parts or boxes. Edits follow the robot's joints.
+Move or rotate any object, or drop in a new box, to show Claude exactly where things go when
+words are too imprecise. Drag fields left or right, Blender-style; delete parts from the view;
+⌘C / ⌘V to duplicate. Edits follow the robot's joints and never overwrite your CAD files.
 
-![Sizing and placing a box in the editor](docs/media/block_it_out.gif)
+![3D primitive editor](docs/media/primitive_editor.gif)
 
-<sub>Recorded in the actual editor (scripted replay of a real edit).</sub>
+<sub>From the Claude-as-CAD video. Re-enactment in the actual editor; the Claude Code side is replayed from a real session.</sub>
 
-### 3. Watch Claude build it
+### 3. Hierarchical notes
 
-When Claude rewrites the model file you have open, the viewer reloads it automatically and
-keeps your camera where it was. Your browser edits become a log Claude can read
-and realize as real geometry in your generator scripts.
+Give each CAD object its own folder, next to notes on servo motor properties, ArUco generators,
+pitfalls, and everything learned so far, so Claude starts every task already knowing what
+you've figured out. This one is a project habit rather than a feature of this repo: keep the
+notes next to your CAD and the viewer's sidebar shows parts and notes side by side.
 
-![Building an arm: editor on the left, Claude Code on the right](docs/media/watch_it_build.gif)
+```
+cad/
+  docs/
+    arm/  camera_mount/  gantry/
+    servos.md        # motor dimensions, horn offsets
+    aruco_robot.md   # marker generators
+    pitfalls.md      # read before generating anything
+    DESIGN_INDEX.md
+  cadlib/
+    aruco.py  beautify.py
+```
 
-<sub>Staged replay of a real build session, run in the actual editor.</sub>
+![Hierarchical notes](docs/media/hierarchical_notes.gif)
+
+<sub>From the Claude-as-CAD video.</sub>
+
+## Putting it together
+
+Place each servo module in the editor, click the faces to connect, and Claude builds the
+connectors. When Claude rewrites the model file you have open, the viewer reloads it and keeps
+your camera where it was.
+
+![Building an arm: editor on the left, Claude Code on the right](docs/media/arm_build.gif)
+
+<sub>2× speed. Staged replay of a real build session, run in the actual editor.</sub>
 
 ## Quick start
 
