@@ -91,6 +91,10 @@ cad/
 
 <sub>From the Claude-as-CAD video.</sub>
 
+To set this up in your own project, start from [`templates/robot-project/`](templates/robot-project/): its
+`AGENTS.md` includes a capture rule, so the agent records what it learned whenever you confirm or correct it,
+without being asked. See [Working with agents](#working-with-agents).
+
 ## Multi-agent: across the whole robotics stack
 
 One motivation of using Claude as your CAD agent is that the same agent that designs your robot can communicate to
@@ -171,6 +175,20 @@ The record format (`stl_delta`, `link_local`, `copies`) is documented in [docs/e
 
 By default the edit-log endpoint only accepts requests from the same machine. Set `CAD_EDITOR_LOG_ALLOW_REMOTE=1`
 to accept them from other hosts on a network you trust.
+
+## Working with agents
+
+The notes, roles, and capture rule live in plain files, so they work with any agent app and any
+number of agents. [`templates/robot-project/`](templates/robot-project/) gives you the layout:
+an `AGENTS.md` every agent reads (with a one-line `CLAUDE.md` for Claude Code), starter `docs/`
+(pitfalls, design index), and one folder per build category.
+
+- **One agent** works fine: it plays every role and follows the capture rule.
+- **Recommended once you're past the first build:** run several agents at once, one or more per
+  role (an interface agent, an organizer, a builder per build category), messaging each other
+  through whatever setup you already use.
+
+Details in [docs/working-with-agents.md](docs/working-with-agents.md).
 
 ## Status
 
