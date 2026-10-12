@@ -2,7 +2,7 @@
   <img src="docs/media/logo.png" alt="claude-as-cad" width="420">
 </p>
 
-<p align="center"><b>A claude-native CAD software for actually building things.</b></p>
+<p align="center"><b>A claude-native CAD software for actually building things with coding-CAD agents.</b></p>
 
 <p align="center">
   <a href="http://omidlab.net/claude-as-cad/">Interactive demos</a> ·
