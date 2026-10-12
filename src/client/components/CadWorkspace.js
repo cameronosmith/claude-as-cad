@@ -305,7 +305,10 @@ import {
   deltaFromPartFields,
   describeCube,
   boundsCenterInFrameMm,
+  defaultLinkWorldMatrices,
   describeMeshCopy,
+  editorModelFingerprint,
+  editorPartBasis,
   describePartDelete,
   describePartEdit,
   editorFrameLinkName,
@@ -6658,16 +6661,45 @@ export default function CadWorkspace({
     [selectedUrdfData]
   );
 
+  // Draft basis: every entry remembers the model it was made against. If the CAD changed
+  // under it (e.g. cad realized the edit), the entry is PAUSED instead of applying twice.
+  const editorModelHash = useMemo(() => editorModelFingerprint(selectedUrdfData), [selectedUrdfData]);
+  const editorPartBasisByKey = useMemo(() => {
+    const defaultLinkWorlds = defaultLinkWorldMatrices(selectedUrdfData);
+    return new Map(editorPartIndex.map((entry) => [entry.key, editorPartBasis(entry.part, defaultLinkWorlds)]));
+  }, [selectedUrdfData, editorPartIndex]);
+  const editorPaused = useMemo(() => {
+    const parts = new Set();
+    const objects = new Set();
+    if (!editorModelHash) {
+      return { parts, objects };
+    }
+    for (const [key, edit] of Object.entries(editorPartEdits)) {
+      const current = editorPartBasisByKey.get(key);
+      if (current && edit?.basis !== current) {
+        parts.add(key);
+      }
+    }
+    for (const object of editorCubes) {
+      if (object?.basisModel !== editorModelHash) {
+        objects.add(object.id);
+      }
+    }
+    return { parts, objects };
+  }, [editorModelHash, editorPartBasisByKey, editorPartEdits, editorCubes]);
+  const editorPausedCount = editorPaused.parts.size + editorPaused.objects.size;
+  const editorDraftCount = Object.keys(editorPartEdits).length + editorCubes.length;
+
   const editorPartDeltas = useMemo(() => {
     const deltas = {};
     for (const [key, edit] of Object.entries(editorPartEdits)) {
       const entry = editorPartByKey.get(key);
-      if (entry && Array.isArray(edit?.delta)) {
+      if (entry && Array.isArray(edit?.delta) && !editorPaused.parts.has(key)) {
         deltas[entry.partId] = edit.delta;
       }
     }
     return deltas;
-  }, [editorPartEdits, editorPartByKey]);
+  }, [editorPartEdits, editorPartByKey, editorPaused]);
 
   // editorCubes holds every added object: plain cubes and pasted part copies (kind "mesh").
   const editorPrimitives = useMemo(() => editorCubes
@@ -6684,8 +6716,10 @@ export default function CadWorkspace({
       }
       return { id: object.id, kind: "cube", matrix: cubeWorldRowMajor(object, editorLinkWorlds), selected };
     })
-    .filter((primitive) => primitive.matrix && (primitive.kind !== "mesh" || primitive.sourcePartId)),
-  [editorCubes, editorLinkWorlds, editorSelection, editorPartByKey]);
+    .filter((primitive) => primitive.matrix &&
+      (primitive.kind !== "mesh" || primitive.sourcePartId) &&
+      !editorPaused.objects.has(primitive.id)),
+  [editorCubes, editorLinkWorlds, editorSelection, editorPartByKey, editorPaused]);
 
   const editorSelectedPart = editorSelection?.kind === "part"
     ? editorPartByKey.get(editorSelection.key) || null
@@ -6713,10 +6747,10 @@ export default function CadWorkspace({
       return null;
     }
     const delta = editorSelectedPart
-      ? editorPartEdits[editorSelectedPart.key]?.delta
+      ? (editorPaused.parts.has(editorSelectedPart.key) ? null : editorPartEdits[editorSelectedPart.key]?.delta)
       : editorSelectedCopy?.delta;
     return partFieldsFromDelta(editorPartContext, delta);
-  }, [editorPartContext, editorPartEdits, editorSelectedPart, editorSelectedCopy]);
+  }, [editorPartContext, editorPartEdits, editorSelectedPart, editorSelectedCopy, editorPaused]);
   const editorCubeFields = useMemo(
     () => (editorSelectedBox && editorFrameWorld
       ? cubeFieldsFromLocal(editorSelectedBox, editorLinkWorlds, editorFrameWorld)
@@ -6789,7 +6823,7 @@ export default function CadWorkspace({
       const copyId = editorSelectedCopy.id;
       recordEditorUndo();
       setEditorCubes((current) => current.map((object) => (
-        object.id === copyId ? { ...object, delta: isNearIdentity(delta, 1e-7) ? null : delta } : object
+        object.id === copyId ? { ...object, delta: isNearIdentity(delta, 1e-7) ? null : delta, basisModel: editorModelHash } : object
       )));
       markEditorDirty();
       return;
@@ -6802,12 +6836,12 @@ export default function CadWorkspace({
       if (isNearIdentity(delta, 1e-7) && !deleted) {
         delete next[key];
       } else {
-        next[key] = { partId, link, mesh, delta, ...(deleted ? { deleted: true } : {}) };
+        next[key] = { partId, link, mesh, delta, basis: editorPartBasisByKey.get(key) || "", ...(deleted ? { deleted: true } : {}) };
       }
       return next;
     });
     markEditorDirty();
-  }, [editorSelectedPart, editorSelectedCopy, editorPartContext, editorPartFields, markEditorDirty, recordEditorUndo]);
+  }, [editorSelectedPart, editorSelectedCopy, editorPartContext, editorPartFields, markEditorDirty, recordEditorUndo, editorPartBasisByKey, editorModelHash]);
 
   const handleEditorResetPart = useCallback(() => {
     if (!editorSelectedPart) {
@@ -6832,28 +6866,29 @@ export default function CadWorkspace({
     setEditorPartEdits((current) => {
       const next = { ...current };
       const delta = current[key]?.delta || null;
+      const basis = editorPartBasisByKey.get(key) || "";
       if (deleted) {
-        next[key] = { partId, link, mesh, delta, deleted: true };
+        next[key] = { partId, link, mesh, delta, basis, deleted: true };
       } else if (!delta || isNearIdentity(delta, 1e-7)) {
         delete next[key];
       } else {
-        next[key] = { partId, link, mesh, delta };
+        next[key] = { partId, link, mesh, delta, basis };
       }
       return next;
     });
     markEditorDirty();
-  }, [editorSelectedPart, markEditorDirty, recordEditorUndo]);
+  }, [editorSelectedPart, markEditorDirty, recordEditorUndo, editorPartBasisByKey]);
 
   const editorHiddenPartIds = useMemo(() => {
     const ids = [];
     for (const [key, edit] of Object.entries(editorPartEdits)) {
       const entry = editorPartByKey.get(key);
-      if (edit?.deleted && entry) {
+      if (edit?.deleted && entry && !editorPaused.parts.has(key)) {
         ids.push(entry.partId);
       }
     }
     return ids;
-  }, [editorPartEdits, editorPartByKey]);
+  }, [editorPartEdits, editorPartByKey, editorPaused]);
 
   const handleEditorAddCube = useCallback(() => {
     if (!editorFrameWorld) {
@@ -6884,7 +6919,7 @@ export default function CadWorkspace({
     }
     const id = `cube-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
     recordEditorUndo();
-    setEditorCubes((current) => [...current, { id, name, link, local }]);
+    setEditorCubes((current) => [...current, { id, name, link, local, basisModel: editorModelHash }]);
     setEditorSelection({ kind: "cube", id });
     markEditorDirty();
   }, [
@@ -6896,7 +6931,8 @@ export default function CadWorkspace({
     editorCubes,
     selectedMeshData?.bounds,
     markEditorDirty,
-    recordEditorUndo
+    recordEditorUndo,
+    editorModelHash
   ]);
 
   const updateEditorSelectedCube = useCallback((updater) => {
@@ -6904,9 +6940,11 @@ export default function CadWorkspace({
       return;
     }
     recordEditorUndo();
-    setEditorCubes((current) => current.map((cube) => (cube.id === editorSelectedCube.id ? updater(cube) : cube)));
+    setEditorCubes((current) => current.map((cube) => (
+      cube.id === editorSelectedCube.id ? { ...updater(cube), basisModel: editorModelHash } : cube
+    )));
     markEditorDirty();
-  }, [editorSelectedCube, markEditorDirty, recordEditorUndo]);
+  }, [editorSelectedCube, markEditorDirty, recordEditorUndo, editorModelHash]);
 
   const handleEditorCubeField = useCallback((group, index, value) => {
     if (!editorSelectedCube || editorSelectedCube.kind === "mesh" || !editorCubeFields || !editorFrameWorld) {
@@ -6999,14 +7037,15 @@ export default function CadWorkspace({
           delta: null,
           sourceKey: entry.key,
           mesh: entry.mesh,
-          sourceBounds: entry.part.sourceBounds || entry.part.bounds || null
+          sourceBounds: entry.part.sourceBounds || entry.part.bounds || null,
+          basisModel: editorModelHash
         };
       }
     } else {
       const source = clipboard.object;
       const local = offsetLocalInFrame(source.local, source.link, editorLinkWorlds, editorFrameWorld, offset);
       if (local) {
-        created = { ...source, id, name: nextCopyName(source.name, names), local };
+        created = { ...source, id, name: nextCopyName(source.name, names), local, basisModel: editorModelHash };
       }
     }
     if (!created) {
@@ -7019,7 +7058,7 @@ export default function CadWorkspace({
     markEditorDirty();
     setEditorStatus(`Pasted ${created.name} (+${offset[0]} mm X from the original).`);
     return true;
-  }, [editorFrameWorld, editorCubes, editorPartByKey, editorLinkWorlds, editorPartEdits, recordEditorUndo, markEditorDirty]);
+  }, [editorFrameWorld, editorCubes, editorPartByKey, editorLinkWorlds, editorPartEdits, recordEditorUndo, markEditorDirty, editorModelHash]);
 
   const handleEditorGestureStart = useCallback(() => {
     editorGestureRef.current = {
@@ -7119,16 +7158,16 @@ export default function CadWorkspace({
         id: `part:${key}`,
         kind: "part",
         key,
-        label: `${entry ? `${entry.mesh} (${entry.link})` : `${key} (not in this model)`}${editorPartEdits[key]?.deleted ? " — deleted" : ""}`
+        label: `${entry ? `${entry.mesh} (${entry.link})` : `${key} (not in this model)`}${editorPartEdits[key]?.deleted ? " — deleted" : ""}${editorPaused.parts.has(key) ? " — paused" : ""}`
       };
     }),
     ...editorCubes.map((cube) => ({
       id: `cube:${cube.id}`,
       kind: cube.kind === "mesh" ? "copy" : "cube",
       cubeId: cube.id,
-      label: cube.kind === "mesh" ? `${cube.name} (copy of ${cube.mesh}, ${cube.link})` : `${cube.name} (${cube.link})`
+      label: `${cube.kind === "mesh" ? `${cube.name} (copy of ${cube.mesh}, ${cube.link})` : `${cube.name} (${cube.link})`}${editorPaused.objects.has(cube.id) ? " — paused" : ""}`
     }))
-  ], [editorPartEdits, editorPartByKey, editorCubes]);
+  ], [editorPartEdits, editorPartByKey, editorCubes, editorPaused]);
 
   const handleEditorSelectItem = useCallback((item) => {
     setEditorSelection(item.kind === "part" ? { kind: "part", key: item.key } : { kind: "cube", id: item.cubeId });
@@ -7162,6 +7201,9 @@ export default function CadWorkspace({
   const buildEditorSummaryLines = useCallback(() => {
     const lines = [`[cad_editor reference edits | ${selectedEntry?.file || "model"} | ${editorFrameMode === "base" ? `${editorFrameLink} frame` : "world frame (Z-up)"}, mm / deg, pivot = part geometry center | NOT applied to the CAD]`];
     for (const [key, edit] of Object.entries(editorPartEdits)) {
+      if (editorPaused.parts.has(key)) {
+        continue;
+      }
       const { entry, fields } = editorPartReport(key, edit);
       if (!entry) {
         continue;
@@ -7173,6 +7215,9 @@ export default function CadWorkspace({
       }
     }
     for (const cube of editorCubes) {
+      if (editorPaused.objects.has(cube.id)) {
+        continue;
+      }
       if (cube.kind === "mesh") {
         const context = editorFrameWorld ? meshCopyContext(cube, editorLinkWorlds, editorFrameWorld) : null;
         const fields = context ? partFieldsFromDelta(context, cube.delta) : null;
@@ -7195,7 +7240,8 @@ export default function CadWorkspace({
     editorPartReport,
     editorCubes,
     editorFrameWorld,
-    editorLinkWorlds
+    editorLinkWorlds,
+    editorPaused
   ]);
 
   const handleEditorSave = useCallback(async () => {
@@ -7205,7 +7251,7 @@ export default function CadWorkspace({
     }
     setEditorSaving(true);
     try {
-      const parts = Object.entries(editorPartEdits).map(([key, edit]) => {
+      const parts = Object.entries(editorPartEdits).filter(([key]) => !editorPaused.parts.has(key)).map(([key, edit]) => {
         const { entry, fields } = editorPartReport(key, edit);
         return {
           key,
@@ -7218,14 +7264,15 @@ export default function CadWorkspace({
           stl_delta: edit.delta || [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]
         };
       });
-      const cubes = editorCubes.filter((cube) => cube.kind !== "mesh").map((cube) => ({
+      const activeObjects = editorCubes.filter((object) => !editorPaused.objects.has(object.id));
+      const cubes = activeObjects.filter((cube) => cube.kind !== "mesh").map((cube) => ({
         id: cube.id,
         name: cube.name,
         link: cube.link,
         ...(editorFrameWorld ? cubeFieldsFromLocal(cube, editorLinkWorlds, editorFrameWorld) || {} : {}),
         link_local: cube.local
       }));
-      const copies = editorCubes.filter((cube) => cube.kind === "mesh").map((copy) => {
+      const copies = activeObjects.filter((cube) => cube.kind === "mesh").map((copy) => {
         const context = editorFrameWorld ? meshCopyContext(copy, editorLinkWorlds, editorFrameWorld) : null;
         const fields = context ? partFieldsFromDelta(context, copy.delta) : null;
         return {
@@ -7268,7 +7315,7 @@ export default function CadWorkspace({
       }
       setEditorSidecarPath(String(payload?.path || ""));
       setEditorDirty(false);
-      setEditorStatus(`Logged ${parts.length} part edit(s), ${cubes.length} cube(s), ${copies.length} copie(s) at ${new Date().toLocaleTimeString()} — reference only, CAD unchanged.`);
+      setEditorStatus(`Logged ${parts.length} part edit(s), ${cubes.length} cube(s), ${copies.length} copie(s) at ${new Date().toLocaleTimeString()}${editorPausedCount ? ` (${editorPausedCount} paused edit(s) not logged)` : ""}. Once cad applies it, discard the draft — or it pauses itself when the model changes.`);
     } catch (error) {
       setEditorStatus(`Logging failed: ${error?.message || error}`);
     } finally {
@@ -7284,7 +7331,9 @@ export default function CadWorkspace({
     editorFrameLink,
     selectedEntry,
     selectedUrdfJointValues,
-    buildEditorSummaryLines
+    buildEditorSummaryLines,
+    editorPaused,
+    editorPausedCount
   ]);
 
   const handleEditorCopy = useCallback(() => {
@@ -7296,13 +7345,42 @@ export default function CadWorkspace({
     setEditorStatus(`Copied ${lines.length - 2} edit line(s) to clipboard.`);
   }, [buildEditorSummaryLines, editorSidecarPath, editorDirty]);
 
+  const handleEditorDiscardPaused = useCallback(() => {
+    if (!editorPausedCount) {
+      return;
+    }
+    recordEditorUndo();
+    setEditorPartEdits((current) => Object.fromEntries(
+      Object.entries(current).filter(([key]) => !editorPaused.parts.has(key))
+    ));
+    setEditorCubes((current) => current.filter((object) => !editorPaused.objects.has(object.id)));
+    setEditorSelection(null);
+    markEditorDirty();
+    setEditorStatus(`Discarded ${editorPausedCount} paused edit(s) (⌘Z to undo).`);
+  }, [editorPausedCount, editorPaused, recordEditorUndo, markEditorDirty]);
+
+  const handleEditorReapplyPaused = useCallback(() => {
+    if (!editorPausedCount) {
+      return;
+    }
+    recordEditorUndo();
+    setEditorPartEdits((current) => Object.fromEntries(Object.entries(current).map(([key, edit]) => (
+      editorPaused.parts.has(key) ? [key, { ...edit, basis: editorPartBasisByKey.get(key) || "" }] : [key, edit]
+    ))));
+    setEditorCubes((current) => current.map((object) => (
+      editorPaused.objects.has(object.id) ? { ...object, basisModel: editorModelHash } : object
+    )));
+    markEditorDirty();
+    setEditorStatus(`Re-applied ${editorPausedCount} edit(s) on top of the current model.`);
+  }, [editorPausedCount, editorPaused, editorPartBasisByKey, editorModelHash, recordEditorUndo, markEditorDirty]);
+
   const handleEditorRevertAll = useCallback(() => {
     recordEditorUndo();
     setEditorPartEdits({});
     setEditorCubes([]);
     setEditorSelection(null);
     setEditorDirty(true);
-    setEditorStatus("Reverted all edits (⌘Z to bring them back; not saved yet).");
+    setEditorStatus("Discarded the draft (⌘Z to bring it back).");
   }, [recordEditorUndo]);
 
   useEffect(() => {
@@ -7335,6 +7413,7 @@ export default function CadWorkspace({
           link: String(edit.link || ""),
           mesh: String(edit.mesh || ""),
           delta,
+          basis: String(edit.basis || ""),
           ...(edit.deleted ? { deleted: true } : {})
         };
       }
@@ -7346,6 +7425,7 @@ export default function CadWorkspace({
         name: String(cube.name || `cube${index + 1}`),
         link: String(cube.link),
         local: cube.local.map(Number),
+        basisModel: String(cube.basisModel || ""),
         ...(cube.kind === "mesh"
           ? {
             kind: "mesh",
@@ -9613,6 +9693,10 @@ export default function CadWorkspace({
           onSave={handleEditorSave}
           onCopy={handleEditorCopy}
           onRevertAll={handleEditorRevertAll}
+          draftCount={editorDraftCount}
+          pausedCount={editorPausedCount}
+          onDiscardPaused={handleEditorDiscardPaused}
+          onReapplyPaused={handleEditorReapplyPaused}
           onGestureStart={handleEditorGestureStart}
           onGestureEnd={handleEditorGestureEnd}
           canUndo={editorUndoCounts.past > 0}

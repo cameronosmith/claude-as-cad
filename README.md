@@ -180,6 +180,11 @@ CUBE "cube1" (world): center (139.0, 0.6, 284.8)mm | rot (0.0, 0.0, 0.0)deg | si
 
 The record format (`stl_delta`, `link_local`, `copies`) is documented in [docs/edit-log.md](docs/edit-log.md).
 
+Drafts never apply twice. Each draft edit remembers the model it was made against; if the CAD changes on disk
+afterwards (typically because your agent has realized the edit), the edit **pauses** instead of being drawn on top of
+the updated model. A banner lets you **Re-apply anyway** or **Discard paused**, and a badge always shows how many draft
+edits are active, with one click to discard the whole draft.
+
 By default the edit-log endpoint only accepts requests from the same machine. Set `CAD_EDITOR_LOG_ALLOW_REMOTE=1`
 to accept them from other hosts on a network you trust.
 

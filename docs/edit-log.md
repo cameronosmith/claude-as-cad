@@ -34,6 +34,9 @@ decides how to realize it in your generator scripts or URDF.
 
 All matrices are **row-major 4×4** arrays of 16 numbers.
 
+An agent that has applied a record may add `"realized": "<ISO time>"` to it as bookkeeping. The editor itself
+doesn't rely on this: open drafts pause automatically when the model changes on disk (see the README).
+
 ### `parts[]` — edits to existing parts
 
 | Field | Meaning |

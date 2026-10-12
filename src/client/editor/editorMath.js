@@ -15,7 +15,7 @@
 //   rotation_deg : fixed-axis X→Y→Z (== URDF rpy == Blender XYZ euler), about the center
 //   scale        : per-axis factors in base axes, applied before rotation (Blender object scale)
 import * as THREE from "three";
-import { solveUrdfLinkWorldTransforms } from "cadjs/lib/urdf/kinematics";
+import { buildDefaultUrdfJointValues, solveUrdfLinkWorldTransforms } from "cadjs/lib/urdf/kinematics";
 
 export const EDITOR_SIDECAR_FORMAT = "cad_editor.edits/v1";
 export const EULER_ORDER = "ZYX";
@@ -216,6 +216,61 @@ export function cubeLocalFromFields(fields, linkName, linkWorlds, frameWorld) {
     fields.size_mm.map((value) => (Number(value) || 0) / 1000)
   );
   return rowMajorFromMatrix(linkWorld.clone().invert().multiply(frameWorld).multiply(inFrame));
+}
+
+// ---- draft basis fingerprints ---------------------------------------------------
+// Draft edits remember what they were made against so they can pause themselves when the
+// CAD changes underneath (e.g. cad realized the edit → it would otherwise apply twice).
+// Computed from the LOADED model data, not the server's ?v= (which can be stale).
+
+function fnv1a(text) {
+  let hash = 0x811c9dc5;
+  for (let index = 0; index < text.length; index += 1) {
+    hash ^= text.charCodeAt(index);
+    hash = Math.imul(hash, 0x01000193) >>> 0;
+  }
+  return hash.toString(16).padStart(8, "0");
+}
+
+function quantize(values, step) {
+  return Array.isArray(values) ? values.map((value) => Math.round((Number(value) || 0) / step)) : [];
+}
+
+export function defaultLinkWorldMatrices(urdfData) {
+  return urdfData ? linkWorldMatrices(urdfData, buildDefaultUrdfJointValues(urdfData)) : new Map();
+}
+
+// Whole-model fingerprint (joints + link visuals) — used for cubes and pasted copies.
+export function editorModelFingerprint(urdfData) {
+  if (!urdfData) {
+    return "";
+  }
+  const links = (Array.isArray(urdfData.links) ? urdfData.links : []).map((link) => [
+    String(link?.name || ""),
+    (Array.isArray(link?.visuals) ? link.visuals : []).map((visual) => [
+      meshFileFromUrl(visual?.meshUrl || visual?.partFileRef),
+      Array.isArray(visual?.localTransform) ? quantize(visual.localTransform, 1e-7) : JSON.stringify(visual?.localTransform ?? null),
+      JSON.stringify(visual?.primitive ?? null)
+    ])
+  ]);
+  const joints = (Array.isArray(urdfData.joints) ? urdfData.joints : []).map((joint) => JSON.stringify(joint));
+  return fnv1a(JSON.stringify([links, joints]));
+}
+
+// Per-part fingerprint: default-pose placement (link chain + visual origin) + STL bounds.
+// Changes when cad moves a joint origin, a visual origin, or rewrites the STL geometry.
+export function editorPartBasis(part, defaultLinkWorlds) {
+  const linkWorld = defaultLinkWorlds.get(String(part?.linkName || ""));
+  if (!linkWorld || !Array.isArray(part?.localTransform)) {
+    return "";
+  }
+  const placement = linkWorld.clone().multiply(matrixFromRowMajor(part.localTransform));
+  const bounds = part.sourceBounds || part.bounds || {};
+  return fnv1a(JSON.stringify([
+    quantize(rowMajorFromMatrix(placement), 1e-7),
+    quantize(bounds.min, 1e-4),
+    quantize(bounds.max, 1e-4)
+  ]));
 }
 
 // ---- part copies (pasted CAD parts) ------------------------------------------

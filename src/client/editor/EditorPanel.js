@@ -251,6 +251,10 @@ export default function EditorPanel({
   onSave,
   onCopy,
   onRevertAll,
+  draftCount = 0,
+  pausedCount = 0,
+  onDiscardPaused,
+  onReapplyPaused,
   onGestureStart,
   onGestureEnd,
   canUndo = false,
@@ -295,6 +299,11 @@ export default function EditorPanel({
         <div className="flex items-center gap-2">
           <span className="text-xs font-semibold">Primitive editor</span>
           <span className="rounded bg-amber-500/15 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-amber-600">fork</span>
+          {draftCount ? (
+            <span className="rounded bg-sky-500/15 px-1.5 py-0.5 text-[9px] font-semibold text-sky-700" title="Local draft edits in this browser — NOT in the CAD">
+              {draftCount} draft{pausedCount ? ` · ${pausedCount} paused` : ""}
+            </span>
+          ) : null}
           {dirty ? <span className="text-[10px] text-amber-600" title="Changed since the last Save to edit log">● not logged</span> : null}
         </div>
         <button
@@ -309,6 +318,17 @@ export default function EditorPanel({
       {collapsed ? null : (
         <EditorGestureContext.Provider value={gestureValue}>
         <div className="max-h-[calc(100vh-140px)] space-y-3 overflow-y-auto px-3 py-2.5 text-[11px]">
+          {pausedCount ? (
+            <div className="space-y-1.5 rounded border border-amber-500/40 bg-amber-500/10 px-2 py-1.5 text-[11px] text-amber-800">
+              <div>
+                ⚠ {pausedCount} draft edit{pausedCount === 1 ? "" : "s"} paused — the model changed on disk since you made {pausedCount === 1 ? "it" : "them"} (probably realized by your agent). Paused edits aren't drawn or logged.
+              </div>
+              <div className="flex gap-1.5">
+                <PanelButton tone="danger" onClick={onDiscardPaused} title="Drop the paused edits (⌘Z to undo)">Discard paused</PanelButton>
+                <PanelButton onClick={onReapplyPaused} title="Apply them again on top of the current model">Re-apply anyway</PanelButton>
+              </div>
+            </div>
+          ) : null}
           <div className="flex items-center gap-2">
             <span className="text-[10px] uppercase tracking-wide text-muted-foreground">Frame</span>
             <div className="flex overflow-hidden rounded border border-border">
@@ -442,7 +462,7 @@ export default function EditorPanel({
             <div className="flex flex-wrap gap-1.5">
               <PanelButton tone="primary" onClick={onSave} disabled={saving || !editedItems?.length} title="Append these reference edits to the edit log (CAD_EDITOR_EDITS_DIR on the server, default ~/cad_editor_edits) for your agent — the CAD is not changed">{saving ? "Logging…" : "Save to edit log"}</PanelButton>
               <PanelButton onClick={onCopy} disabled={!editedItems?.length} title="Copy a summary of the edits to paste to cad">Copy edits</PanelButton>
-              <PanelButton tone="danger" onClick={onRevertAll} disabled={!editedItems?.length} title="Drop all unsaved and saved edits in this session">Revert all</PanelButton>
+              <PanelButton tone="danger" onClick={onRevertAll} disabled={!editedItems?.length} title="Throw away the whole local draft (⌘Z to undo)">Discard draft</PanelButton>
             </div>
             {status ? <div className="break-words text-[10px] text-muted-foreground">{status}</div> : null}
             <div className="text-[10px] text-muted-foreground">Reference edits only — kept in this browser; the CAD is never changed.</div>
