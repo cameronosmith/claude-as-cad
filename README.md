@@ -141,6 +141,13 @@ every CAD file under `--dir`. The server binds to `127.0.0.1` by default.
 Supported files (from the upstream viewer): `.urdf`, `.sdf`, `.srdf`, `.step`/`.stp`, `.stl`, `.3mf`, `.glb`,
 `.dxf`, `.gcode`. The editor panel appears for URDF robots.
 
+## Make it yours
+
+claude-as-cad is a recipe, not a finished product. It's meant to be a starting point that you and your agent keep
+reshaping to fit your builds. The editor ships with boxes and copies of existing parts because that's what these
+builds needed. If yours need spheres or cylinders, a fillet tool, a measuring tape, or anything else, just prompt your
+agent to add it to the interface — it's a small web app your agent can read and change like any other code.
+
 ## Using the editor
 
 | Action | How |
