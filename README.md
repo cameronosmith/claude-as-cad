@@ -119,7 +119,7 @@ into your build.
 
 ## Quick start
 
-**Just point your agent here:** `https://github.com/cameronosmith/claude-as-cad`
+**Just point your agent here.**
 
 Requires Node.js 20+. Point `--dir` at the folder that holds your URDFs and meshes.
 
